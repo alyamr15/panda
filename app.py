@@ -1,123 +1,82 @@
-# app.py
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-from datetime import datetime
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-# Dummy user data (untuk simulasi login)
-USERS = {
-    "admin": "admin123",
-    "user1": "password1"
-}
+# Menampilkan judul utama (yang sudah kamu buat)
+st.title("📊 Dashboard ChemInsight")
+st.markdown("---")
 
-# Konfigurasi halaman
-st.set_page_config(page_title="Personal Finance Dashboard", layout="wide")
+# --- NAVIGASI SIDEBAR ---
+st.sidebar.title("🧪 Menu Navigasi")
+menu = st.sidebar.radio("Pilih Fitur:", ["Home", "Kalkulator Parameter Kimia", "Analisis Data Lab"])
 
-# Inisialisasi session_state
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-if "username" not in st.session_state:
-    st.session_state.username = None
-if "data" not in st.session_state:
-    st.session_state.data = None
+# --- MENU 1: HOME ---
+if menu == "Home":
+    st.subheader("Selamat Datang di ChemInsight")
+    st.markdown("""
+    Aplikasi web ini siap membantu Anda untuk:
+    1. **Menghitung parameter kimia** (Molaritas & Massa Zat) secara instan.
+    2. **Menganalisis data laboratorium** melalui statistik dasar dan grafik regresi linier.
+    """)
 
-# Login Page
-if not st.session_state.authenticated:
-    st.title("🔐 Login Page")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-    if st.button("Login"):
-        if USERS.get(username) == password:
-            st.session_state.authenticated = True
-            st.session_state.username = username
-            st.success("Login successful!")
-            st.rerun()
-        else:
-            st.error("Invalid username or password")
-    st.stop()
+# --- MENU 2: KALKULATOR PARAMETER KIMIA ---
+elif menu == "Kalkulator Parameter Kimia":
+    st.subheader("🧮 Kalkulator Molaritas & Massa")
+    mode = st.selectbox("Komponen yang ingin dicari:", ["Molaritas (M)", "Massa Zat (gram)"])
+    
+    col1, col2 = st.columns(2)
+    if mode == "Molaritas (M)":
+        with col1:
+            massa = st.number_input("Massa Zat (gram):", min_value=0.0, value=1.0, step=0.1)
+            mr = st.number_input("Massa Molar / Mr (g/mol):", min_value=0.1, value=40.0, step=0.1)
+        with col2:
+            volume = st.number_input("Volume Larutan (mL):", min_value=0.1, value=100.0, step=1.0)
+        
+        if st.button("Hitung Molaritas"):
+            molaritas = (massa / mr) * (1000 / volume)
+            st.success(f"Hasil: Molaritas Larutan = {molaritas:.4f} M")
+            
+    elif mode == "Massa Zat (gram)":
+        with col1:
+            molaritas_target = st.number_input("Molaritas yang Diinginkan (M):", min_value=0.0, value=0.1, step=0.01)
+            mr = st.number_input("Massa Molar / Mr (g/mol):", min_value=0.1, value=40.0, step=0.1)
+        with col2:
+            volume = st.number_input("Volume Larutan (mL):", min_value=0.1, value=100.0, step=1.0)
+            
+        if st.button("Hitung Massa"):
+            massa_hasil = (molaritas_target * mr * volume) / 1000
+            st.success(f"Hasil: Massa zat yang harus ditimbang = {massa_hasil:.4f} gram")
 
-# Sidebar Navigation
-page = st.sidebar.selectbox(
-    "📄 Go to Page",
-    ("Dashboard", "Upload Data", "Finance Chatbot", "Settings")
-)
-
-# Sample chatbot reply
-def finance_bot(question, df):
-    if df is None:
-        return "Please upload your data first."
-    if "pengeluaran terbesar" in question.lower():
-        max_row = df.loc[df["Amount"].idxmin()]
-        return f"Pengeluaran terbesar Anda adalah {abs(max_row['Amount']):,.0f} untuk {max_row['Category']} pada {max_row['Date']}."
-    return "Maaf, saya belum memahami pertanyaan Anda sepenuhnya."
-
-# Dashboard Page
-if page == "Dashboard":
-    st.title("📊 Personal Finance Dashboard")
-    if st.session_state.data is None:
-        st.info("Please upload your transaction data first on the 'Upload Data' page.")
+# --- MENU 3: ANALISIS DATA LAB ---
+elif menu == "Analisis Data Lab":
+    st.subheader("📊 Analisis & Visualisasi Data Laboratorium")
+    uploaded_file = st.file_uploader("Unggah file CSV hasil lab Anda", type=["csv"])
+    
+    if uploaded_file is not None:
+        df = pd.read_csv(uploaded_file)
+        st.write("### 📋 Tabel Data", df)
+        
+        st.write("### 📈 Ringkasan Statistik", df.describe())
+        
+        # Fitur unduh statistik
+        @st.cache_data
+        def convert_df(dataframe):
+            return dataframe.describe().to_csv().encode('utf-8')
+        
+        st.download_button("💾 Unduh Laporan Statistik (.CSV)", data=convert_df(df), file_name='laporan_statistik.csv', mime='text/csv')
+        
+        # Membuat Grafik
+        kolom_numerik = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+        if len(kolom_numerik) >= 2:
+            st.write("### 🖼️ Visualisasi Grafik")
+            sumbu_x = st.selectbox("Sumbu X (misal: Konsentrasi):", kolom_numerik)
+            sumbu_y = st.selectbox("Sumbu Y (misal: Absorbansi):", kolom_numerik)
+            
+            fig, ax = plt.subplots()
+            sns.regplot(data=df, x=sumbu_x, y=sumbu_y, ax=ax, marker="o", color="teal")
+            ax.grid(True)
+            st.pyplot(fig)
     else:
-        df = st.session_state.data
-        total_income = df[df["Amount"] > 0]["Amount"].sum()
-        total_expense = df[df["Amount"] < 0]["Amount"].sum()
-        net_balance = total_income + total_expense
-
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Income", f"Rp {total_income:,.0f}")
-        col2.metric("Total Expense", f"Rp {abs(total_expense):,.0f}")
-        col3.metric("Net Balance", f"Rp {net_balance:,.0f}")
-
-        st.subheader("📈 Monthly Expenses")
-        df["Month"] = pd.to_datetime(df["Date"]).dt.to_period("M").astype(str)
-        monthly = df[df["Amount"] < 0].groupby("Month")["Amount"].sum().reset_index()
-        fig = px.bar(monthly, x="Month", y="Amount", title="Monthly Expenses", labels={'Amount':'Total Expense'})
-        st.plotly_chart(fig, use_container_width=True)
-
-        st.subheader("📊 Expense by Category")
-        category = df[df["Amount"] < 0].groupby("Category")["Amount"].sum().reset_index()
-        fig2 = px.bar(category, x="Category", y="Amount", title="Expenses by Category", labels={'Amount':'Total Expense'})
-        st.plotly_chart(fig2, use_container_width=True)
-
-
-# Upload Page
-elif page == "Upload Data":
-    st.title("📁 Upload Your Financial Transactions")
-    st.markdown("Format file: CSV dengan kolom `Date`, `Amount`, `Category`")
-    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
-    if uploaded_file:
-        try:
-            df = pd.read_csv(uploaded_file)
-            df["Date"] = pd.to_datetime(df["Date"])
-            st.dataframe(df.head())
-            st.session_state.data = df
-            st.success("Data uploaded successfully!")
-        except Exception as e:
-            st.error(f"Error loading data: {e}")
-
-# Chatbot Page
-elif page == "Finance Chatbot":
-    st.title("💬 Ask Our Finance Bot")
-    st.chat_message("assistant").write("Hi! Saya adalah FinanceBot. Tanyakan apapun seputar keuangan Anda!")
-    if prompt := st.chat_input("Tulis pertanyaan Anda..."):
-        st.chat_message("user").write(prompt)
-        response = finance_bot(prompt, st.session_state.data)
-        st.chat_message("assistant").write(response)
-
-# Settings Page
-elif page == "Settings":
-    st.title("⚙️ Settings")
-    st.markdown(f"Welcome, **{st.session_state.username}**!")
-    with st.expander("🔒 Logout"):
-        if st.button("Logout"):
-            st.session_state.authenticated = False
-            st.session_state.username = None
-            st.session_state.data = None
-            st.success("You have been logged out.")
-            st.experimental_rerun()
-
-    with st.expander("📝 Update Preferences"):
-        theme = st.selectbox("Pilih tema dashboard", ["Default", "Dark", "Colorful"])
-        st.info(f"(Dummy feature) Tema yang dipilih: {theme}")
-
-# Footer
-st.sidebar.caption("Made with ❤️ using Streamlit")
+        st.info("💡 Silakan unggah file CSV. Contoh format data yang benar:")
+        st.table({'Konsentrasi_ppm': [1, 2, 3], 'Absorbansi': [0.15, 0.31, 0.46]})
